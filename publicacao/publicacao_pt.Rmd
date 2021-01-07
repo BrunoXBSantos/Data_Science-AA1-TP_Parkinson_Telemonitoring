@@ -1,7 +1,7 @@
 ---
 title: "*Parkinson Telemonitoring DataSet* - Análise em R"
 author: "Bruno Santos, Guilherme Palumbo, João Mendes"
-date: "06/01/2021"
+date: "04/01/2021"
 output: html_document
 ---
 
@@ -60,6 +60,7 @@ names(parkinsons_updrs)
 ```
 
 Podemos também visualizar um pequeno sumário das respetivas variáveis através do seguinte comando.
+
 ```
 summary(m1)
 # motor_UPDRS & total_UPDRS <- Variáveis dependentes (de interesse)
