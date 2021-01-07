@@ -1,0 +1,534 @@
+---
+title: "*Parkinson Telemonitoring DataSet* - Análise em R"
+author: "Bruno Santos, Guilherme Palumbo, João Mendes"
+date: "06/01/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Na presente publicação realizamos uma análise do conjunto de dados *Parkinsons Telemonitoring*. Através do ambiente RStudio, construimos vários modelos de regressão para prever a presença de sintomas da doença de Parkinson em pacientes na escala UPDRS.
+
+O *dataset* referido foi retirado do site <https://archive.ics.uci.edu/ml/datasets/Parkinsons+Telemonitoring>. Citamos também o artigo publicado no site *pubMed* que puderá ter dado origem ao *dataset*.
+
+*A Tsanas, MA Little, PE McSharry, LO Ramig (2009)
+'Accurate telemonitoring of Parkinson’s disease progression by non-invasive speech tests', IEEE Transactions on Biomedical Engineering*
+
+
+O principal objectivo desta publicação é analisar e explorar o dataset com o auxílio dos 
+métodos de aprendizagem estatística de forma a obter algum conhecimento a partir dos dados.
+
+A presente publicação está dividida nos seguintes tópicos: **análise exploratória**, **análise preditiva**, **análise de resultados**, **uma nova abordagem: análise preditiva utilizando um modelo misto** e **conclusão**.
+
+&nbsp;
+
+# Análise exploratória
+
+&nbsp;
+
+Este tópico apresenta uma análise exploratória dos dados, através de gráficos e medidas estatísticas e que suporta algumas questões e hipóteses formuladas.
+
+O presente dataset é composto por uma série de medições biomédicas da voz de 42 pessoas com doença de Parkinson em estado inicial que foram recrutadas para um teste de seis meses utilizando um dispositivo de telemonitoramento para o monitoramento remoto da progressão dos sintomas. As gravações foram capturadas automaticamente nas residências do paciente.
+
+Depois de carregado o ficheiro csv com os dados para o RStudio, podemos, através de alguns comandos, fazer uma análise profunda do dataset.
+
+```
+library(MASS)
+library(ISLR)
+library(nlme)
+library(lme4)
+library(ggplot2)
+library(babynames)
+library(dplyr)
+library(viridis)
+```
+
+```{r}
+parkinsons_updrs <- read.csv("~/Desktop/AA1/parkinsons_updrs.data")
+attach(parkinsons_updrs)
+m1 <- parkinsons_updrs 
+dim(m1) #fornece a dimensão das linhas e colunas do dataset
+```
+Como observado, temos um total de 5875 registos, caracterizados por 22 atributos.
+
+As 22 variáveis independentes (atributos) são as seguintes:
+
+```{r}
+names(parkinsons_updrs)
+```
+
+Podemos também visualizar um pequeno sumário das respetivas variáveis independentes através do seguinte comando.
+```
+summary(m1)
+# motor_UPDRS & total_UPDRS <- Variáveis dependentes (de interesse)
+```
+O **dataset** tem como tipo de objeto um data.frame.
+```{r}
+class(m1)
+```
+
+Para ver as primeiras 3 linhas e as últimas 2 linhas podemos usar os seguintes comandos:
+```
+head(m1, 3)
+tail(m1,2)
+```
+Para ver a base de dados completa, usamos o seguinte comando:
+```
+fix(m1)
+```
+
+Dado a conhecer a constituição do dataset passamos para a análise da correlação entre os diversos atributos. Da análise dos atributos anteriores, o único que é qualitativo é o atributo *sex*, que apenas pode tomar os valores 0 ou 1. 
+
+Para analisar a correlação, iremos utilizar a função *Pairs*. *Pairs* devolve um gráfico de dispersão. Só faz sentido fazer um gráfico de dispersão se as minhas variáveis forem quantitativas. 
+
+```
+pairs(m1[,-c(3)])
+```
+
+Em termos de correlação, podemos aplicar a correlação de Pearson só para variaveis quantitativas. Se for proximo de 1 existe correlação linear positiva, se for proxima de -1 existe correlação linear negativa.
+
+```
+cor(m1[,-c(3)])
+```
+
+São várias as elações que podemos retirar através dos gráficos de correlações anteriores. Por exemplo, o atributo *total_UPDRS* está fortemente correlacionado com *motor_UPDRS*, uma vez que o valor do coeficiente de correlação é próximo de 1. 
+
+Podemos ver também que, os atributos começados com *Jitter*, estão correlacionados positivamente com o atributo *total_UPDRS*. Analisando os significados de cada atributo percebemos o porquê da correlação positiva, uma vez que os atributos *Jitter* (medidas utilizadas para medir a qualidade de voz) se forem aumentados (a qualidade da voz piora) o atributo *total_UPDRS* (Pontuação UPDRS total) também aumenta (aumenta a probabilidade de possuir a doença de Parkinson).
+
+De um modo geral, e nesta primeira apreciação da base de dados, concluímos que todos os atributos são relevantes para o problema. Contudo, notamos que a variável test_time quase não possui qualquer correlação com as restantes variáveis, mas tomamos a decisão de não a retirar nesta primeira fase tendo em conta o problema e admitindo que o tempo possa vir a ser um factor importante no desenvolvimento de qualquer doença.
+
+É necessário realizar a selecção da variável de interesse a predizer. Como possuímos duas variáveis dependentes, *Motor_UPDRS* e *Total_UPDRS*, selecionamos apenas aquela que teria um valor mais significativo e com resultados mais confiáveis. Desta forma, através da análise da distribuição de ambas as variáveis, representadas nas duas figuras subsequentes, concluímos que a melhor variável para se prever seria a variável *Total_UPDRS* por possuir uma distribuição gaussiana.
+
+```{r, echo=FALSE}
+par(mfrow=c(1,2))
+hist(total_UPDRS) #Distribuição gaussiana (normal) 
+hist(motor_UPDRS) 
+```
+
+**A variável de interesse a ser estudada será a variável Y = total_UPDRS.**
+
+Na continuidade do processo de exploração do dados foram realizadas várias tarefas que enriqueceram a informação que possuímos sobre o *dataset* e por conseguinte o tratamento dos dados. Deste modo, identificamos se o dataset possuía qualquer valor em falta, eliminamos os registos com *test_time* inferior a zero, representamos visualmente todos os outliers das variáveis existentes e exploramos se o dataset tinha qualquer registo duplicado.
+
+```
+table(is.na(m1)) #(neste caso nao apresenta qualquer valor em falta)
+prop.table(table(is.na(m1))) * 100 #calcula a proporção de missing values
+which(is.na(m1)==T) 
+```
+
+Como observado, o *dataset* não possui valores em falta. Para verificar se existe algum registo duplicado recorremos ao comando *duplicated(m1)*, o que nos mostrou que dos 5875 registos, nenhum era duplicado. Para a verificação da presença de outliers realizamos o seguinte procedimento: para cada atributo fizemos um boxpot, como exemplificado no gráfico seguinte para o atributo age, e se algum dado apresentava-se fora da caixa, poderia ser um outlier. 
+
+Também eliminamos os registos com *test_time* inferior a zero.
+
+```{r}
+m1 = m1[m1$test_time > 0,]
+dim(m1)
+```
+Inicialmente, a base de dados apresentava 5875. Com a remoção dos valores negativos de *test_time*, apresenta 5863 registos.
+
+
+Após este primeiro tratamento de dados, podemos fazer algumas interrogações ao *dataset* com o objetivo de melhorar a nossa compreensão e posteriormente realizar uma melhor análise. As questões são as seguintes:
+
+- **Existe algum resíduo (outlier) presente nas observações? Se sim, que medidas devemos tomar para o seu tratamento?**
+
+Após a descoberta dos outliers existentes no dataset, ou seja, as observações que tinham resíduos de valor elevado quando comparados com outras observações da mesma variável, averiguamos que não iríamos eliminá-los do modelo, visto que esses valores não significam que são más observações. Por outro lado, concluímos que no caso da variável *age* por exemplo, notamos que o outlier representa um valor muito importante, onde mostra que existem indivíduos muito novos que
+apresentam a doença de Parkinson em estado inicial.
+
+```{r}
+boxplot(age, main="age", sub=paste("Outlier rows: ", boxplot.stats(age)$out))
+```
+
+
+- **Qual o atributo ou atributos que mais influenciam a variável *total_updrs*?**
+
+Analisando as correlações de forma individual e com suporte ao grafico de correlação, podemos concluir que
+os atributos que mais influenciam a variável *total_updrs* são os atributos *motor_updrs*, com 0.95
+de correlação, e a *age*, com 0.31 de correlação. Por outro lado, podemos também concluir que o
+atributo *HNR* possui uma correlação de -0.16, sendo o atributo com maior correlação negativa.
+
+
+- **Quais são as características mais comuns de um individuo que possui um total_updrs superior a
+50 UPDRS (Escala Unificada de Avaliação da Doença de Parkinson)?**
+
+Após uma análise dos dados para todos os pacientes com um total_updrs superior a 50, podemos
+concluir que as características mais frequentes são do sexo masculino e uma idade compreendida
+entre os 70 e 72 anos. Possuem um Jitter... entre [0.00, 0.01], um Jitter.Abs. compreendido entre
+[0e+00, 0.5e-02] e um Jitter.RAP entre [0.00, 0.005]. Para Shimmer os valores mais comuns estão
+entre [0.02, -0.05], para Shimmer.APQ5 [0.00, 0.04] e para Shimmer.APQ11 [0.02, 0.04]. O NHR
+está compreendido entre [20, 22], o RPDE entre [0.45, 0.5], o DFA entre [0.72, 0.74] e o PPE entre
+[0.2, 0.3]. Por último, as características mais comuns para motor_UPDRS estão compreendidas
+no intervalo [36, 38]. (Apenas foram analisados os atributos considerados mais relevantes).
+
+
+&nbsp;
+
+# Análise Preditiva
+
+&nbsp;
+
+Nesta fase foram desenvolvidos três macro-processos diferentes onde foram aplicadas formas diferentes de
+gerar o modelo de Regressão Linear. Os resultados serão analisados no tópico seguinte.
+
+&nbsp;
+
+### Análise Preditiva utilizando o conjunto de dados total
+
+&nbsp;
+
+O primeiro processo elaborado foi uma regressão linear
+com todos os dados do *dataset*´, não possuindo um *dataset* de treino nem de teste.
+
+Inicialmente, foi concebida uma Regressão Linear com todas as variáveis. Foi também introduzimos um termo
+de interacção entre os atributos *age* e *sex*. Este termo de iteração, explicado de seguida, teve influência positiva no modelo.
+
+```
+x1 <- lm(total_UPDRS ~ subject. + age + sex + test_time + motor_UPDRS + Jitter... 
+                    + Jitter.Abs. + Jitter.RAP + Jitter.PPQ5 + Jitter.DDP + Shimmer 
+                    + Shimmer.dB. + Shimmer.APQ3 + Shimmer.APQ5 + Shimmer.APQ11 + Shimmer.DDA 
+                    + NHR + HNR + RPDE + DFA + PPE + age*sex, data=m1)
+summary(x1)
+```
+Nesta primeira versão, são várias as elações a serem retiradas. Como o *p-value* do termo de iteração *age*:*sex* é muito próximo de zero, rejeitamos a hipótese de este termo ser zero. O coeficiente de determinacao $R²$ é alto, o que significa que 91 por cento da variabilidade de y é explicado por este modelo. Também podemos deparar que existem vários preditores com *p-value* alto, significando que a hipotese nula não é rejeitanda, levando à anulação do respetivo preditor.
+
+No sentido de anular os preditores com *p-value* elevado sucessivamente, recorremos à função *step*. Esta função anula o preditor com o *p-value* mais elevado e compara os *AIC* dos vários modelos até encontrar o modelo com o *AIC* mais baixo. 
+
+```
+step(x1, direction="backward") 
+```
+
+Na sexta iteração foi encontrado o melhor modelo, cujo valor *AIC* = 13618.72. O modelo resultante (x6) é o seguinte: 
+
+```{r}
+x6 <- lm(formula = total_UPDRS ~ subject. + age + sex + test_time + 
+           motor_UPDRS + Jitter... + Jitter.Abs. + Jitter.RAP + Shimmer + 
+           Shimmer.APQ5 + Shimmer.APQ11 + HNR + RPDE + DFA + PPE + age:sex, 
+         data = m1)
+         
+#extractAIC(x6)
+#summary(x6)
+```
+Através da função *summary(x6)* é possível ver que todos os preditores são importantes. O valor de $R²$ é semelhante ao anterior, mas como este modelo é mais simples, previligiamos, uma vez que o modelo anterior com mais dados não acrescentou nenhuma informação.
+
+Uma outra forma de fazer uma comparação entre os modelos x1 e x6 é através de um teste *ANOVA*. A hipotese nula é que o modelo x6 é parecido ao modelo x1, e a hipótese alternativa é que o modelo x1 é melhor que o x6. Como o p-value de x1 é alto, não rejeitamos a hipótese nula.
+
+```
+anova(x6,x1)
+```
+
+Uma outra forma de dar concistencia ao modelo x6 é calcular o intervalo de confiança dos seus preditores. 
+
+```
+confint(x6,level=0.95)
+```
+Podemos concluir que em nenhum dos casos, como o zero não está condito com 95% de certeza em nenhum dos intervalos das
+variáveis, não será necessário eliminar nenhum preditor, logo são bons preditores.
+
+
+Em suma, o melhor modelo de regressão é o modelo x6, para o seguinte conjunto de dados: 
+
+```{r}
+m2 <- parkinsons_updrs[,-c(10,11,13,14,17)]
+```
+
+De seguida apresentamos uma abordagem diferente, mas que demontrou ter piores resultados.
+Inicialmente, fizemos uma filtragem dos preditores pelo seu *vif*. O *vif* diz respeito à coliniaridade, se nenhum preditor com valor acima de 10, significa que é não coliniar. De seguida executamos a função *step()* para remover os preditores com *p-value* elevado. O modelo resultante encontra-se de seguida (modelo x9).  
+
+
+```
+vif(x1)
+
+x3 <- lm(total_UPDRS ~ .-sex-Jitter...-Jitter.RAP-Jitter.PPQ5-Jitter.DDP-Shimmer-Shimmer.dB.-Shimmer.APQ3-Shimmer.APQ5-Shimmer.APQ11-Shimmer.DDA,data = parkinsons_updrs)
+summary(x3)
+step(x3, direction="backward") 
+
+x3 <- lm(total_UPDRS ~ . - sex - Jitter... - 
+    Jitter.RAP - Jitter.PPQ5 - Jitter.DDP - Shimmer - Shimmer.dB. - 
+    Shimmer.APQ3 - Shimmer.APQ5 - Shimmer.APQ11 - Shimmer.DDA, 
+         data = parkinsons_updrs)
+
+summary(x3)
+
+extractAIC(x3)
+```
+
+Valor do *ACID*=14076.51. Valor superior ao *ACID* do modelo x6. Pelo que, apesar do modelo x3 ser um modelo mais simples, o modelo x6 apresenta uma valor menor no AIC e um valor maior no $R²$. Com os presentes dados, é preferível o modelo x6 ao modelo x3.
+
+
+&nbsp;
+
+
+### Análise Preditiva utilizando um conjunto de dados de treino e teste
+
+
+&nbsp;
+
+O conjunto de treino é um conjunto de dados real utilizado para o treinamento do modelo. O modelo aprendeendo com esses dados. A divisão entre os dados de treino e de teste foi a seguinte: 75% dos presentes dados foram para treino, e os restantess 25% para teste. O conjunto de teste é um
+conjunto de dados que descreve o *golden standard* utilizado para avaliar o modelo. Para efetuar esse procedimento efetuamos o seguinte código.
+
+```{r}
+smp_size <- floor(0.75 * nrow(m1))
+
+## set the seed to make your partition reproducible
+set.seed(123)
+train_ind <- sample(seq_len(nrow(m1)), size = smp_size)
+
+train <- m1[train_ind, ]
+test <- m1[-train_ind, ]
+```
+
+```{r}
+#dim(m2)
+dim(train)
+```
+```{r}
+dim(test)
+```
+```
+#normal model + Relation between age*sex
+y1 <- lm(total_UPDRS ~ subject. + age + sex + test_time + motor_UPDRS + Jitter... 
+                    + Jitter.Abs. + Jitter.RAP + Jitter.PPQ5 + Jitter.DDP + Shimmer 
+                    + Shimmer.dB. + Shimmer.APQ3 + Shimmer.APQ5 + Shimmer.APQ11 + Shimmer.DDA 
+                    + NHR + HNR + RPDE + DFA + PPE + age*sex, data=train)
+summary(y1)
+```
+
+Como efetuado no processo anterior, através da função *step* encontramos o melhor modelo para os dados de treino, que se encontra a seguir.
+```{r}
+y6 <- lm(total_UPDRS ~ subject. + age + sex + test_time + motor_UPDRS + Jitter... 
+                    + Jitter.Abs. + Jitter.RAP  + Shimmer 
+                    + Shimmer.APQ5 + Shimmer.APQ11  
+                    + NHR + HNR + RPDE + DFA + PPE + age*sex, data=train)
+```
+
+O modelo y6 é o que apresenta menor valor de *ACID*. Uma outra forma de verificar a qualidade dos preditores é verificar o intervalo de confiança para, por exemplo, 95 por cento. Através do intervalo de confiança, temos 95 por cento de certeza que os preditores são bons.
+
+```
+confint(y6,level=0.95)
+```
+
+Aptesentamos neste tópico dois modelos diferentes de regressão para a mesma base de dados. O primeiro modelo (x6) que teve em conta os dados totais. O segundo modelo (y6) que dividiu os dados em dados de treino e dados de teste. No tópico seguinte apresentamos os resultados.
+
+
+&nbsp;
+
+# Análise de Resultados
+
+&nbsp;
+
+Concebidos os modelos, apresentamos de seguida o desempenho de cada um. Para tal usamos uma panoplia de medidas estatísticas como *p-value*, *Akaike information criterion* (*AIC*), *Adjusted R-squared* e o *Root Mean Square Error* (*RMSE*).
+
+As três primeiras medidas dão-nos informações relevantes acerca de qualquer modelo, seja um modelo de classificação ou regressão. Já a última, *Root Mean Square Error*, é mais adequada para problemas de regressão quando comparada com a *accuracy* que se adequa mais a problemas de classificação.
+
+Os modelos em análise é o modelo x6 (com os dados totais) e o modelo y6 (com dados de treino e de teste). 
+
+```{r}
+x6
+```
+```{r}
+y6
+```
+```
+extractAIC(y6)  
+extractAIC(x6)
+
+summary(x6)
+summary(y6)
+```
+
+O modelo y6 apresenta mais um atributo do que o modelo x6, o preditor *NHR*. Deste modo, concluimos que o modelo x6 é mais simples.
+
+Em relação ao *AIC*, no caso do modelo x6 $AIC(x6) = 13618.72$ e no caso do modelo y6 $AIC(y6) = 10252.02$. Neste quesito, o modelo y6 é bastante melhor. 
+
+Em relação ao $R²$, temos os valores de 0.9115 e 0.9114, para os modelos x6 e y6, respetivamente. Os valores são bastantes similares, mas devido ao modelo x6 apresentar menos um preditor, o seu valor é ligeiramente mais alto.
+
+
+Agora podemos entrar nas predições sobre ambos os modelos.
+
+```{r}
+ # SEM DATASET DE TREINO E TESTE# 
+prediction <- predict(x6)
+#length(prediction)
+#fix(prediction)
+```
+
+```{r}
+par(mfrow=c(1,2))
+hist(prediction, main="Predicted total_UPDRS")
+hist(total_UPDRS, main="Real total_UPDRS")
+```
+
+Nos gráficos anteriores, no lado esquerdo encontra-se as predições para o modelo x6, no lado direito o valores de *total_UPDRS* de referência.
+
+No código, prevemos o valor da variável de interesse, *total_UPDRS*, para o modelo y6, com os valores dos dados de teste.
+
+```{r}
+prediction_test = predict(y6, test) 
+length(prediction_test)
+#fix(prediction_test)
+```
+
+1469 é o número de dados de teste, como supra-citado.
+
+
+
+```{r}
+par(mfrow=c(1,2))
+hist(prediction_test,main="Predicted with test total_UPDRS")
+hist(total_UPDRS, main="Real total_UPDRS")
+```
+
+
+Nos gráficos anteriores, no lado esquerdo encontra-se as predições para o modelo y6 usando os 1469 dados de teste e no lado direito o valores de *total_UPDRS* de referência.
+
+Nos dois gráficos seguintes, podemos ver que ambos os modelos de regrassão, y6 e x6, conduzem a resultados semelhantes.
+
+```{r}
+par(mfrow=c(1,2))
+xlim = range(total_UPDRS)
+plot(prediction ~ m1$total_UPDRS, xlab = "Observados", ylab = "Previstos", xlim= xlim, ylim = xlim)
+abline(0,1,col="red")
+#teste
+plot(prediction_test ~ test$total_UPDRS, xlab = "Observados", ylab = "Previstos", xlim= xlim, ylim = xlim)
+abline(0,1,col="red")
+```
+
+```{r}
+rmse = function(total_UPDRS, prediction_test){sqrt(mean((total_UPDRS - prediction_test)^2))}
+
+rmse(test$total_UPDRS, prediction_test)
+
+rmse(m1$total_UPDRS, prediction)
+```
+A raiz quadrática média do erro, *RMSE (ROOT MEAN SQUARE ERROR)*, para o modelo x6 e y6 é, respetivamente, 3.186417 e 3.232576.
+
+**Em resumo, o modelo x6 é mais simples e apresenta um *RMSE* inferior do que o modelo y6. O modelo y6 apresenta um valor de *AIC* bastante inferior ao modelo x6. Em relação ao valor de *$R²$*, o valor é bastante semelhante.**
+
+
+Com base no que anteriormente foi expresso, escolhemos o modelo y6 como o melhor modelo para predizer o valor de *total_UPDRS*.
+
+
+$E[y6] = E[totalUPDRS] = -1.295 + 4.622e-02*subject. + 1.151e-01*age + 4.060*sex + 2.860e-03*testtime$
+    $+ 1.215e+00*motorUPDRS + -2.635e+02*Jitter... + 1.540e+04*Jitter.Abs. + 4.002e+02*Jitter.RAP$
+    $-4.895e+01*Shimmer +1.263e+02*Shimmer.APQ5 + -6.072e+01*Shimmer.APQ11 -5.593e+00*NHR$
+    $-1.025e-01*HNR + 3.407e+00*RPDE + -2.817e+00*DFA - 3.462e+00*PPE + 8.853e-02* age:sex$ 
+
+
+&nbsp;
+
+
+# Uma nova abordagem: análise preditiva utilizando um modelo misto
+
+
+&nbsp;
+
+O presente conjunto de dados apresenta apenas 42 indivíduos diferentes para um total de mais de 5
+mil registos. Este facto leva-nos a concluir que alguns registos não são independentes. Deste modo,
+decidimos desenvolver um modelo misto, uma vez que este garante uma certa independência entre os
+dados. O modelo é denominado misto porque possui efeitos fixos, como na regressão linear, e efeitos
+aleatórios. Os efeitos aleatórios permitem assumir um valor de resposta diferente para cada fator,
+assumindo diferentes interceptos (aleatórios) para cada resposta. 
+
+Os modelos lineares tradicionais são
+desenvolvidos no R da seguinte forma: *$y = x1 + x2*x3$*. Os modelos mistos, por sua vez, são
+construídos como *$y = x1 +$ efeito fixo | efeito aleatório*.
+
+Nos presentes modelos mistos, definimos os atributos *subject.* e *test_time*
+como efeito aleatório e os restantes atributos como efeito fixo, sendo que para isso usamos o comando
+*lmer*. Decidimos colocar como efeito aleatório *subject.* e *test_time*, por serem os únicos
+atributos não independentes. 
+
+Desenvolvemos três modelos que usam o efeito aleatório. 
+O (**model1**) usa todos os atributos presentes na base de dados (22) e os dados de teste, o (**model2**) usa os atributos do modelo y6 (16), resultantes do procedimento efetuado pela função *step()* e os dados de teste, e por fim, o modelo **model3** que usa os atributos de x6 (15) e todos os dados presentes na base de dados.
+
+
+```
+model1 = lmer(total_UPDRS ~ subject. + age + sex + test_time + motor_UPDRS + Jitter... 
+              + Jitter.Abs. + Jitter.RAP + Jitter.PPQ5 + Jitter.DDP + Shimmer 
+              + Shimmer.dB. + Shimmer.APQ3 + Shimmer.APQ5 + Shimmer.APQ11 + Shimmer.DDA 
+              + NHR + HNR + RPDE + DFA + PPE + (1|subject.) + (1|test_time), data=train, REML=FALSE)
+
+model2 = lmer(total_UPDRS ~ subject. + age + sex + test_time + motor_UPDRS + Jitter... 
+              + Jitter.Abs. + Jitter.RAP  + Shimmer 
+              + Shimmer.APQ5 + Shimmer.APQ11  
+              + NHR + HNR + RPDE + DFA + PPE + (1|subject.) + (1|test_time), data=train, REML = FALSE)
+
+model3 <- lmer(total_UPDRS ~ subject. + age + sex + test_time + motor_UPDRS + Jitter... 
+               + Jitter.Abs. + Jitter.RAP  + Shimmer 
+               + Shimmer.APQ5 + Shimmer.APQ11  
+               + NHR + HNR + RPDE + DFA + PPE + (1|subject.) + (1|test_time), data=m1, REML = FALSE)
+```
+Através do código seguinte é possivel visualizar os diferentes coeficientes dos parâmetros. 
+
+```
+summary(model1)
+
+summary(model2)
+
+summary(model3)
+```
+
+Através do seguinte código foi possível obter várias medidas estatisticas acerca dos três modelos.
+
+```
+predictions_model1 = predict(model1, test, allow.new.levels = TRUE)
+length(predictions_model1) # 1469
+
+predictions_model2 = predict(model2, test, allow.new.levels = TRUE)
+length(predictions_model2) # 1469
+
+predictions_model3 = predict(model3, m1, allow.new.levels = TRUE)
+length(predictions_model3) # 5875
+
+rmse(test$total_UPDRS, predictions_model1) # 0.7665973
+rmse(test$total_UPDRS, predictions_model2) # 0.7673286
+rmse(m1$total_UPDRS, predictions_model3)   # 0.04916757
+
+extractAIC(model1) # 25.000 3859.029
+extractAIC(model2) # 20.000 3852.046
+extractAIC(model3) # 20.000 2782.976
+```
+
+Deparamos desde logo que, nos modelos mistos, o desempenho melhora de forma significativa em relação aos modelos anteriores. 
+
+É notório que o modelo "model3" apresenta as melhores características, uma vez que a quantidade de observações são bastantes supeiores do que nos 
+outros modelos. Uma vez que não foram usados dados de teste e de treino para o "model3", o excluímos na presente comparação.
+
+Analisando o AIC, verificamos que o melhor modelo é o "model2", ou seja, o
+modelo que usa os preditores "age", "sex", "motor_UPDRS", "Jitter...", "Jitter.Abs.", "Jitter.RAP",
+"Shimmer", "Shimmer.APQ5", "Shimmer.APQ11", "HNR", "RPDE", "DFA", "PPE", "subject." e
+"test_time". Este modelo apresenta uma AIC de 3852.046 enquanto que o "model1"(usa todos os pre-
+ditores) apresenta um AIC de 3859.029.
+
+Verificando o valor do RMSE para os modelos preditivos percebemos que o
+"model1" apresenta um valor ligeiramente melhor que o "model2"(1.011055 e 1.011119, respetivamente).
+Entre os presentes dois modelos, **model1** e **model2**, tendo em conta os valores de AIC e de RMSE, o **model2** apresenta os melhores resultados. 
+
+Gostaríamos de resalvar que, esta análise com modelos mistos poderá não estar correta. Ainda precisamos de assimilar conceitos sobre esta abordagem. 
+
+&nbsp;
+
+# Conclusão 
+
+&nbsp;
+
+O principal objetivo do presente projeto foi analisar e explorar um dataset com o auxílio de métodos de
+aprendizagem estatística de forma a obter algum conhecimento a partir dos dados. Para isso utilizamos
+o *Parkinsons Telemonitoring DataSet*, onde aplicamos um conjunto de tarefas para extrair
+conhecimento.
+
+Através dos resultados obtidos, e analisando os modelos desenvolvidos, concluímos que o facto de
+dividirmos o conjunto de dados em treino e teste, privilegiar modelos mais simples e aplicar
+efeito aleatório foi determinante para o desempenho dos modelos. Se dividirmos os dados em treino e
+teste temos modelos com melhores valores de *AIC* e *RMSE* quando comparado com os modelos que não os utilizam. Com os dados de teste e de treino não só obtemos um melhor resultado como o modelo é mais realista e não se
+corre o risco de overfitting. 
+
+Por outro lado, ao utilizar modelos mais simples (com menos preditores)
+o desempenho dos modelos melhora, ainda que ligeiramente. Por último, e se assumirmos que há
+dados não independentes, os modelos que aplicam efeitos aleatórios e efeitos fixos melhoram de forma
+significativa o valor de AIC e RMSE em comparação com os modelos que apenas efeitos fixos.
+
+Em suma, na procura do melhor modelo, e admitindo que o que foi realizado com os efeitos fixos e aleatórios está correto, analisando o valor de AIC e RMSE, o melhor modelo é o **"model2"**. Se excluirmos os modelos de efeitos fixos e aleatórios, o melhor modelo, com base no que anteriormente foi dito, é o modelo y6.
+
+
+&nbsp;
