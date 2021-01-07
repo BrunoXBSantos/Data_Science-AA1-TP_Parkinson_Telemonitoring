@@ -53,18 +53,21 @@ dim(m1) #fornece a dimensão das linhas e colunas do dataset
 ```
 Como observado, temos um total de 5875 registos, caracterizados por 22 atributos.
 
-As 22 variáveis independentes (atributos) são as seguintes:
+O presente modelo contem 22 variáveis, sendo elas:
 
 ```{r}
 names(parkinsons_updrs)
 ```
 
-Podemos também visualizar um pequeno sumário das respetivas variáveis independentes através do seguinte comando.
+Podemos também visualizar um pequeno sumário das respetivas variáveis através do seguinte comando.
 ```
 summary(m1)
 # motor_UPDRS & total_UPDRS <- Variáveis dependentes (de interesse)
 ```
+Das 22 variáveis contidas no modelo, as variáveis dependentes são a *motor_UPDRS* e a *total_UPDRS*. As restantes são os preditores ou variáveis independentes.
+
 O **dataset** tem como tipo de objeto um data.frame.
+
 ```{r}
 class(m1)
 ```
