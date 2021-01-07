@@ -534,5 +534,6 @@ significativa o valor de AIC e RMSE em comparação com os modelos que apenas ef
 
 Em suma, na procura do melhor modelo, e admitindo que o que foi realizado com os efeitos fixos e aleatórios está correto, analisando o valor de AIC e RMSE, o melhor modelo é o **"model2"**. Se excluirmos os modelos de efeitos fixos e aleatórios, o melhor modelo, com base no que anteriormente foi dito, é o modelo y6.
 
+O trabalho completo, com o código R e o *dataset* usado, encontra-se no seguinte repositório do *GitHub*: <https://github.com/BrunoXBSantos/Data_Science-AA1-TP_Parkinson_Telemonitoring>
 
 &nbsp;
